@@ -239,7 +239,8 @@ mod spi {
 // I2C (blocking)
 mod i2c {
     use super::{Forward, ForwardError};
-    use eh1_0::i2c::SevenBitAddress;
+    use crate::markers::{ForwardFullI2c, ForwardWriteReadI2c, ForwardWriteReadWritereadI2c};
+    use eh1_0::i2c::{Operation, SevenBitAddress};
 
     use eh0_2::blocking::i2c::{self as eh0_2_i2c};
 
@@ -249,7 +250,7 @@ mod i2c {
         }
     }
 
-    impl<T, E> eh1_0::i2c::ErrorType for Forward<T>
+    impl<T, E> eh1_0::i2c::ErrorType for Forward<T, ForwardFullI2c>
     where
         T: eh0_2::blocking::i2c::Read<Error = E>,
         E: core::fmt::Debug,
@@ -257,7 +258,7 @@ mod i2c {
         type Error = ForwardError<E>;
     }
 
-    impl<T, E> eh1_0::i2c::I2c<SevenBitAddress> for Forward<T>
+    impl<T, E> eh1_0::i2c::I2c<SevenBitAddress> for Forward<T, ForwardFullI2c>
     where
         T: eh0_2_i2c::Write<Error = E>
             + eh0_2_i2c::WriteIter<Error = E>
@@ -300,6 +301,105 @@ mod i2c {
             });
 
             self.inner.exec_iter(address, ops).map_err(ForwardError)
+        }
+    }
+
+    impl<T, E> eh1_0::i2c::ErrorType for Forward<T, ForwardWriteReadI2c>
+    where
+        T: eh0_2::blocking::i2c::Read<Error = E>,
+        E: core::fmt::Debug,
+    {
+        type Error = ForwardError<E>;
+    }
+
+    impl<T, E> eh1_0::i2c::I2c<SevenBitAddress> for Forward<T, ForwardWriteReadI2c>
+    where
+        T: eh0_2_i2c::Write<Error = E>
+            + eh0_2_i2c::Read<Error = E>,
+        E: core::fmt::Debug,
+    {
+        fn read(&mut self, address: SevenBitAddress, words: &mut [u8]) -> Result<(), Self::Error> {
+            self.inner.read(address, words).map_err(ForwardError)
+        }
+
+        fn write(&mut self, address: SevenBitAddress, words: &[u8]) -> Result<(), Self::Error> {
+            eh0_2_i2c::Write::write(&mut self.inner, address, words).map_err(ForwardError)
+        }
+
+        fn write_read(
+            &mut self,
+            address: SevenBitAddress,
+            bytes: &[u8],
+            buffer: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            self.write(address, bytes)?;
+            self.read(address, buffer)?;
+            Ok(())
+        }
+
+        fn transaction(
+            &mut self,
+            address: SevenBitAddress,
+            operations: &mut [eh1_0::i2c::Operation],
+        ) -> Result<(), Self::Error> {
+            for operation in operations.iter_mut() {
+                match operation {
+                    Operation::Read(words) => self.read(address, words)?,
+                    Operation::Write(words) => self.write(address, words)?,
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    impl<T, E> eh1_0::i2c::ErrorType for Forward<T, ForwardWriteReadWritereadI2c>
+    where
+        T: eh0_2::blocking::i2c::Read<Error = E>,
+        E: core::fmt::Debug,
+    {
+        type Error = ForwardError<E>;
+    }
+
+    impl<T, E> eh1_0::i2c::I2c<SevenBitAddress> for Forward<T, ForwardWriteReadWritereadI2c>
+    where
+        T: eh0_2_i2c::Write<Error = E>
+            + eh0_2_i2c::Read<Error = E>
+            + eh0_2_i2c::WriteRead<Error = E>,
+        E: core::fmt::Debug,
+    {
+        fn read(&mut self, address: SevenBitAddress, words: &mut [u8]) -> Result<(), Self::Error> {
+            self.inner.read(address, words).map_err(ForwardError)
+        }
+
+        fn write(&mut self, address: SevenBitAddress, words: &[u8]) -> Result<(), Self::Error> {
+            eh0_2_i2c::Write::write(&mut self.inner, address, words).map_err(ForwardError)
+        }
+
+        fn write_read(
+            &mut self,
+            address: SevenBitAddress,
+            bytes: &[u8],
+            buffer: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            self.inner
+                .write_read(address, bytes, buffer)
+                .map_err(ForwardError)
+        }
+
+        fn transaction(
+            &mut self,
+            address: SevenBitAddress,
+            operations: &mut [eh1_0::i2c::Operation],
+        ) -> Result<(), Self::Error> {
+            for operation in operations.iter_mut() {
+                match operation {
+                    Operation::Read(words) => self.read(address, words)?,
+                    Operation::Write(words) => self.write(address, words)?,
+                }
+            }
+
+            Ok(())
         }
     }
 }
